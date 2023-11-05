@@ -3,13 +3,14 @@ import torch.nn as nn
 
 
 class Conv1x1(nn.Module):
-    def __init__(self, input_channels, output_channels):
+    def __init__(self, input_channels, output_channels, activation=nn.ReLU(inplace=True)):
         super(Conv1x1, self).__init__()
-        self.conv1x1 =  nn.Sequential(nn.Conv2d(input_channels, output_channels, 1, stride=1, padding=0, bias=False),
-                                      nn.BatchNorm2d(output_channels),
-                                      nn.ReLU(inplace=True)
-                                     )
-    
+        self.conv1x1 =  nn.Sequential(
+            nn.Conv2d(input_channels, output_channels, 1, stride=1, padding=0, bias=False),
+            nn.BatchNorm2d(output_channels),
+            activation
+        )
+
     def forward(self, x):
         return self.conv1x1(x)
 
@@ -93,21 +94,16 @@ class Attention(nn.Module):
         self.global_ = nn.Sequential(
             # global average pooling
             nn.AdaptiveAvgPool2d(1),
-            nn.Conv2d(input_channels, output_channels, 1, 1, 0, bias=True),
+            nn.Conv2d(input_channels, output_channels, 1, 1, 0, bias=False),
             nn.Sigmoid(),
         )
-
         # 2x up
-        self.upsample = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
+        self.upsample = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False)
 
     def forward(self, x):
-        # local
         x_local = self.local(x)
-        # global
         x_global = self.global_(x)
-        # attention
         x = x_local * x_global
-        # upsample
         x = self.upsample(x)
         return x
 

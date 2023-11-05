@@ -108,5 +108,10 @@ class ShuffleNetV2(nn.Module):
         return P1, P2, P3
 
     def _initialize_weights(self):
+        # check device
+        device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         print("Initialize params from:%s"%"./module/shufflenetv2.pth")
-        self.load_state_dict(torch.load("./module/shufflenetv2.pth"), strict = True)
+        self.load_state_dict(
+            torch.load("./module/shufflenetv2.pth", map_location=device),
+            strict=True,
+        )

@@ -1,6 +1,12 @@
+import sys
 import math
+
 import torch
 import torch.nn as nn
+
+from detector import Detector
+sys.path.append("utils")
+from datasets import TensorDataset
 
 
 class DetectorLoss(nn.Module):
@@ -80,13 +86,20 @@ class DetectorLoss(nn.Module):
     def forward(self, preds, targets):
         ft = torch.cuda.FloatTensor if preds[0].is_cuda else torch.Tensor
         cls_loss, iou_loss, obj_loss = ft([0]), ft([0]), ft([0])
+        # # seg loss
+        seg_loss = ft([0])
 
         BCEcls = nn.NLLLoss()
         BCEobj = nn.SmoothL1Loss(reduction='none')
+        # BCE seg
+        BCEseg = nn.SmoothL1Loss(reduction='none')
 
-        gt_box, gt_cls, ps_index = self.build_target(preds, targets)
+        pred_det, pred_seg = preds
+        target_det, target_seg = targets
 
-        pred = preds.permute(0, 2, 3, 1)
+        gt_box, gt_cls, ps_index = self.build_target(pred_det, target_det)
+
+        pred = pred_det.permute(0, 2, 3, 1)
         pobj = pred[:, :, :, 0]
         preg = pred[:, :, :, 1:5]
         pcls = pred[:, :, :, 5:]
@@ -118,8 +131,33 @@ class DetectorLoss(nn.Module):
             tobj[b, gy, gx] = iou.float()
             n = torch.bincount(b)
             factor[b, gy, gx] =  (1. / (n[b] / (H * W))) * 0.25
+        
+        ### seg loss whatever box is detected or not
+        gt_mask = target_seg
+        p_mask = pred_seg
+        seg_loss = BCEseg(p_mask, gt_mask).mean()
 
         obj_loss = (BCEobj(pobj, tobj) * factor).mean()
 
-        loss = (iou_loss * 8) + (obj_loss * 16) + cls_loss
-        return iou_loss, obj_loss, cls_loss, loss
+        loss = (iou_loss * 8) + (obj_loss * 16) + cls_loss + seg_loss
+        return iou_loss, obj_loss, cls_loss, seg_loss, loss
+
+
+# main
+if __name__ == "__main__":
+    device = torch.device("cpu")
+    loss = DetectorLoss(device=device)
+    dataset = torch.utils.data.DataLoader(
+        TensorDataset("data/train.txt", aug=True),
+        batch_size=1)
+    model = Detector(10, 10, False)
+    for img, label, mask in dataset:
+        img = img.to(device).float() / 255.0
+        y = model(img)
+        iou, obj, cls, seg, total = loss(y, (label, mask))
+        print("\niou loss: ", iou)
+        print("obj loss: ", obj)
+        print("cls loss: ", cls)
+        print("seg loss: ", seg)
+        print("total loss: ", total)        
+        break
