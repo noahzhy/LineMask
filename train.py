@@ -21,33 +21,37 @@ class FastestDet:
     def __init__(self):
         parser = argparse.ArgumentParser()
         parser.add_argument('--yaml', type=str, default="configs/charts.yaml", help='.yaml config')
-        parser.add_argument('--weight', type=str, default="checkpoint/bar_best.pth", help='.weight config')
+        parser.add_argument('--weight', type=str, default=None, help='.weight config')
 
         opt = parser.parse_args()
         assert os.path.exists(opt.yaml), "yaml file not exist"
 
         self.cfg = LoadYaml(opt.yaml)    
-        print(self.cfg) 
+        print(self.cfg)
 
         if opt.weight is not None:
             print("load weight from:%s"%opt.weight)
-            self.model = Detector(self.cfg.category_num, True).to(device)
-            self.model.load_state_dict(torch.load(opt.weight))
+            self.model = Detector(self.cfg.category_num, 10, False).to(device)
+            self.model.load_state_dict(torch.load(opt.weight, map_location=device))
         else:
-            self.model = Detector(self.cfg.category_num, False).to(device)
+            self.model = Detector(self.cfg.category_num, 10, False).to(device)
 
         summary(self.model, input_size=(3, self.cfg.input_height, self.cfg.input_width))
 
         print("use SGD optimizer")
-        self.optimizer = optim.SGD(params=self.model.parameters(),
-                                   lr=self.cfg.learn_rate,
-                                   momentum=0.949,
-                                   weight_decay=0.0005,
-                                   )
+        # self.optimizer = optim.SGD(params=self.model.parameters(),
+        #                            lr=self.cfg.learn_rate,
+        #                            momentum=0.949,
+        #                            weight_decay=0.0005,
+        # #                            )
         # self.optimizer = optim.Adam(params=self.model.parameters(),
         #                             lr=self.cfg.learn_rate,
         #                             weight_decay=0.0005,
         #                             )
+        self.optimizer = optim.AdamW(self.model.parameters(),
+                                        lr=self.cfg.learn_rate,
+                                        weight_decay=0.0005,
+                                        )
         self.scheduler = optim.lr_scheduler.MultiStepLR(self.optimizer,
                                                         milestones=self.cfg.milestones,
                                                         gamma=0.1)
@@ -55,8 +59,10 @@ class FastestDet:
         self.loss_function = DetectorLoss(device)
         self.evaluation = CocoDetectionEvaluator(self.cfg.names, device)
 
-        val_dataset = TensorDataset(self.cfg.val_txt, self.cfg.input_width, self.cfg.input_height, False)
-        train_dataset = TensorDataset(self.cfg.train_txt, self.cfg.input_width, self.cfg.input_height, True)
+        train_dataset = TensorDataset(
+            self.cfg.train_txt, self.cfg.input_width, self.cfg.input_height, 10, False)
+        val_dataset = TensorDataset(
+            self.cfg.val_txt, self.cfg.input_width, self.cfg.input_height, 10, False)
 
         self.val_dataloader = torch.utils.data.DataLoader(val_dataset,
                                                           batch_size=self.cfg.batch_size,
@@ -82,12 +88,12 @@ class FastestDet:
         for epoch in range(self.cfg.end_epoch + 1):
             self.model.train()
             pbar = tqdm(self.train_dataloader)
-            for imgs, targets in pbar:
+            for imgs, targets, masks in pbar:
                 imgs = imgs.to(device).float() / 255.0
                 targets = targets.to(device)
+                masks = masks.to(device)
                 preds = self.model(imgs)
-
-                iou, obj, cls, total = self.loss_function(preds, targets)
+                iou, obj, cls, seg, total = self.loss_function(preds, (targets, masks))
                 total.backward()
                 self.optimizer.step()
                 self.optimizer.zero_grad()
@@ -99,8 +105,8 @@ class FastestDet:
                         g['lr'] = self.cfg.learn_rate * scale
                     lr = g["lr"]
 
-                info = "Epoch:%d LR:%f IOU:%f Obj:%f Cls:%f Total:%f" % (
-                        epoch, lr, iou, obj, cls, total)
+                info = "Epoch:%d LR:%f IOU:%.4f Obj:%.4f Cls:%.4f Seg:%.4f Total:%.4f" % (
+                        epoch, lr, iou, obj, cls, seg, total)
                 pbar.set_description(info)
                 batch_num += 1
 
@@ -108,7 +114,9 @@ class FastestDet:
                 self.model.eval()
                 print("computer mAP...")
                 mAP05 = self.evaluation.compute_map(self.val_dataloader, self.model)
-                torch.save(self.model.state_dict(), "checkpoint/weight_AP05_%f_%d-epoch.pth"%(mAP05, epoch))
+                # keep 4 decimal places of mAP
+                mAP05 = round(mAP05, 4)
+                torch.save(self.model.state_dict(), "checkpoint/weight_AP05_{:.4f}_{}.pth".format(mAP05, epoch))
 
             self.scheduler.step()
 

@@ -8,6 +8,25 @@ from PIL import Image, ImageDraw
 import matplotlib.pyplot as plt
 
 
+def do_nothing(image, boxes, mask):
+    height, width, _ = image.shape
+    output = []
+    for box in boxes:
+        index, category = box[0], box[1]
+        bx, by = box[2] * width, box[3] * height
+        bw, bh = box[4] * width, box[5] * height
+
+        bx = bx/width
+        by = by/height
+        bw = bw/width
+        bh = bh/height
+
+        output.append([index, category, bx, by, bw, bh])
+
+    output = np.array(output, dtype=float)
+    return image, output, mask
+
+
 def random_crop(image, boxes, mask):
     height, width, _ = image.shape
     # random crop imgage
@@ -64,22 +83,22 @@ def random_narrow(image, boxes, mask):
 
 
 def collate_fn(batch):
-    img, label = zip(*batch)
+    img, label, mask = zip(*batch)
     for i, l in enumerate(label):
         if l.shape[0] > 0:
             l[:, 0] = i
-    return torch.stack(img), torch.cat(label, 0)
+    return torch.stack(img), torch.cat(label, 0), torch.stack(mask)
 
 
 # function to gen line mask via given [[x1, y1, x2, y2, ...], [x1, y1, x2, y2, ...], ...]
-def gen_line_mask(lines, T=10, img_width=352, img_height=352):
+def gen_line_mask(lines, T=10, img_width=352, img_height=352, line_width=5):
     masks = np.zeros((img_height, img_width, T), dtype=np.int64)
     for idx, line in enumerate(lines):
         x = line[:][0::2] * img_width
         y = line[:][1::2] * img_height
         # draw line
         img = Image.fromarray(masks[:, :, idx], mode='L')
-        ImageDraw.Draw(img).line(list(zip(x, y)), fill=1, width=2)
+        ImageDraw.Draw(img).line(list(zip(x, y)), fill=255, width=line_width)
         masks[:, :, idx] = img
 
     return masks
@@ -114,6 +133,8 @@ class TensorDataset():
         label_path = img_path.split(".")[0] + ".txt"
 
         img = cv2.imread(img_path)
+        # # to hsv color space
+        # img = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
 
         if os.path.exists(label_path):
             label = []
@@ -126,13 +147,15 @@ class TensorDataset():
             height, width, _ = img.shape
             mask = gen_line_mask(label[:, 6:], T=self.line_max, img_width=width, img_height=height)
         else:
-            raise Exception("%s is not exist" % label_path) 
+            raise Exception("%s is not exist" % label_path)
 
         if self.aug:
             if random.randint(1, 10) % 2 == 0:
                 img, label, mask = random_narrow(img, label, mask)
             else:
                 img, label, mask = random_crop(img, label, mask)
+        else:
+            img, label, mask = do_nothing(img, label, mask)
 
         # print(img.shape, label.shape, mask.shape, img_path)
         img = cv2.resize(img, (self.img_width, self.img_height), interpolation=cv2.INTER_LINEAR)
@@ -141,16 +164,16 @@ class TensorDataset():
         mask = cv2.resize(mask, (self.img_width, self.img_height), interpolation=cv2.INTER_NEAREST)
         mask = mask.transpose(2,0,1)
 
-        return torch.from_numpy(img), torch.from_numpy(label), torch.from_numpy(mask)
+        return torch.from_numpy(img), torch.from_numpy(label), torch.from_numpy(mask//255).long()
 
     def __len__(self):
         return len(self.data_list)
 
 
 if __name__ == "__main__":
-    data = TensorDataset("data/train.txt", aug=True)
+    data = TensorDataset("data/train.txt", aug=False)
     img, label, mask = data.__getitem__(0)
-    # print(img.shape, label.shape, mask.shape)
+    print(img.shape, label.shape, mask.shape)
 
     def random_lines(kpts_num=10, line_num=3):
         lines = []
@@ -169,6 +192,9 @@ if __name__ == "__main__":
     # mask = gen_line_mask(lines)
     # mask_len = np.sum(mask, axis=2)
     fig = plt.figure()
+    # tight_layout
+    fig.tight_layout()
+
     for i in range(5):
         if i==0:
             plt.subplot(1, 6, i+1)

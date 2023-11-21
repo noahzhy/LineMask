@@ -14,17 +14,23 @@ if __name__ == '__main__':
     # 指定训练配置文件
     parser = argparse.ArgumentParser()
     parser.add_argument('--yaml', type=str, default="configs/charts.yaml", help='.yaml config')
-    parser.add_argument('--weight', type=str, default="checkpoint/bar_best.pth", help='.weight config')
-    parser.add_argument('--img', type=str, default='001.png', help='The path of test image')
-    parser.add_argument('--thresh', type=float, default=0.8, help='The path of test image')
+    parser.add_argument('--weight', type=str, default=None, help='.weight config')
+    parser.add_argument('--img', type=str, default='data/000ab93694f24a3c94ebe1133cb8b3ec.png', help='The path of test image')
+    parser.add_argument('--thresh', type=float, default=0.80, help='The path of test image')
     parser.add_argument('--onnx', action="store_true", default=False, help='Export onnx file')
     parser.add_argument('--torchscript', action="store_true", default=False, help='Export torchscript file')
     parser.add_argument('--cpu', action="store_true", default=False, help='Run on cpu')
 
     opt = parser.parse_args()
     assert os.path.exists(opt.yaml), "请指定正确的配置文件路径"
-    assert os.path.exists(opt.weight), "请指定正确的模型路径"
     assert os.path.exists(opt.img), "请指定正确的测试图像路径"
+
+    if opt.weight is None:
+        # find latest weight in checkpoint dir
+        weight_list = os.listdir("checkpoint")
+        weight_list.sort(key=lambda fn: os.path.getmtime(os.path.join("checkpoint", fn)))
+        opt.weight = os.path.join("checkpoint", weight_list[-1])
+        print("use latest weight:%s"%opt.weight)
 
     # 选择推理后端
     if opt.cpu:
@@ -44,7 +50,7 @@ if __name__ == '__main__':
 
     # 模型加载
     print("load weight from:%s"%opt.weight)
-    model = Detector(cfg.category_num, True).to(device)
+    model = Detector(cfg.category_num, 10, True).to(device)
     model.load_state_dict(torch.load(opt.weight, map_location=device))
     #sets the module in eval node
     model.eval()
@@ -70,15 +76,6 @@ if __name__ == '__main__':
         assert check, "Simplified ONNX model could not be validated"
         print("onnx sim sucess...")
         onnx.save(model_simp, "./FastestDet.onnx")                  
-
-    # 导出torchscript模型
-    if opt.torchscript:
-        import copy
-        model_cpu = copy.deepcopy(model).cpu()
-        x = torch.rand(1, 3, cfg.input_height, cfg.input_width)
-        mod = torch.jit.trace(model_cpu, x)
-        mod.save("./FastestDet.pt")
-        print("to convert torchscript to pnnx/ncnn: ./pnnx FastestDet.pt inputshape=[1,3,%d,%d]" % (cfg.input_height, cfg.input_height))
 
     # 模型推理
     start = time.perf_counter()

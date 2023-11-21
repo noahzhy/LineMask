@@ -4,9 +4,45 @@ import math
 import torch
 import torch.nn as nn
 
-from detector import Detector
-sys.path.append("utils")
-from datasets import TensorDataset
+# from detector import Detector
+# sys.path.append("utils")
+# from datasets import TensorDataset
+
+
+# dice BCE loss
+class DiceBCELoss(nn.Module):
+    def __init__(self, device):
+        super(DiceBCELoss, self).__init__()
+        self.device = device
+        self.sigmoid = nn.Sigmoid()
+
+    def forward(self, pred, target):
+        smooth = 1.
+        pred = pred.contiguous()
+        target = target.contiguous()
+        intersection = (pred * target).sum(dim=2).sum(dim=2)
+        loss = (1 - ((2. * intersection + smooth) / (pred.sum(dim=2).sum(dim=2) + target.sum(dim=2).sum(dim=2) + smooth)))
+        BCE = nn.BCELoss()
+        # cast to float
+        pred = pred.float()
+        target = target.float()
+        pred = self.sigmoid(pred)
+        return BCE(pred, target) + loss.mean()
+
+
+# dice loss
+class DiceLoss(nn.Module):
+    def __init__(self, device):
+        super(DiceLoss, self).__init__()
+        self.device = device
+
+    def forward(self, pred, target):
+        smooth = 1.
+        pred = pred.contiguous()
+        target = target.contiguous()
+        intersection = (pred * target).sum(dim=2).sum(dim=2)
+        loss = (1 - ((2. * intersection + smooth) / (pred.sum(dim=2).sum(dim=2) + target.sum(dim=2).sum(dim=2) + smooth)))
+        return loss.mean()
 
 
 class DetectorLoss(nn.Module):
@@ -86,13 +122,13 @@ class DetectorLoss(nn.Module):
     def forward(self, preds, targets):
         ft = torch.cuda.FloatTensor if preds[0].is_cuda else torch.Tensor
         cls_loss, iou_loss, obj_loss = ft([0]), ft([0]), ft([0])
-        # # seg loss
+        # seg loss
         seg_loss = ft([0])
 
         BCEcls = nn.NLLLoss()
         BCEobj = nn.SmoothL1Loss(reduction='none')
-        # BCE seg
-        BCEseg = nn.SmoothL1Loss(reduction='none')
+        # seg, dice loss
+        BCEseg = DiceLoss(self.device)
 
         pred_det, pred_seg = preds
         target_det, target_seg = targets
@@ -122,7 +158,7 @@ class DetectorLoss(nn.Module):
             b, gy, gx = b[f], gy[f], gx[f]
 
             iou = iou[f]
-            iou_loss =  (1.0 - iou).mean() 
+            iou_loss = (1.0 - iou).mean()
 
             ps = torch.log(pcls[b, gy, gx])
             cls_loss = BCEcls(ps, gt_cls[0][f])
@@ -133,13 +169,11 @@ class DetectorLoss(nn.Module):
             factor[b, gy, gx] =  (1. / (n[b] / (H * W))) * 0.25
         
         ### seg loss whatever box is detected or not
-        gt_mask = target_seg
-        p_mask = pred_seg
-        seg_loss = BCEseg(p_mask, gt_mask).mean()
+        seg_loss = BCEseg(pred_seg, target_seg).mean()
 
         obj_loss = (BCEobj(pobj, tobj) * factor).mean()
 
-        loss = (iou_loss * 8) + (obj_loss * 16) + cls_loss + seg_loss
+        loss = (iou_loss * 1.6) + (obj_loss * 3.2) + cls_loss * 0.1 + seg_loss * 128
         return iou_loss, obj_loss, cls_loss, seg_loss, loss
 
 

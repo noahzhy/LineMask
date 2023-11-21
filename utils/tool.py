@@ -1,6 +1,8 @@
 import yaml
 import torch
 import torchvision
+import numpy as np
+from PIL import Image
 
 # 解析yaml配置文件
 class LoadYaml:
@@ -57,25 +59,45 @@ class EMA():
                 param.data = self.backup[name]
         self.backup = {}
 
-# 后处理(归一化后的坐标)
-def handle_preds(preds, device, conf_thresh=0.25, nms_thresh=0.45):
-    total_bboxes, output_bboxes  = [], []
-    # 将特征图转换为检测框的坐标
-    N, C, H, W = preds.shape
-    bboxes = torch.zeros((N, H, W, 6))
-    pred = preds.permute(0, 2, 3, 1)
-    # 前背景分类分支
-    pobj = pred[:, :, :, 0].unsqueeze(dim=-1)
-    # 检测框回归分支
-    preg = pred[:, :, :, 1:5]
-    # 目标类别分类分支
-    pcls = pred[:, :, :, 5:]
 
-    # 检测框置信度
+def handle_preds(preds, device, conf_thresh=0.25, nms_thresh=0.45):
+    pred_det, pred_seg = preds
+    # get one channel
+    lines = np.zeros_like(pred_seg[:, 0, :, :].detach().cpu().numpy())
+    # min and max
+    # sum to one channel
+    for i in range(pred_seg.shape[1]):
+        # # check min and max value
+        # print(pred_seg[:, i, :, :].min(), pred_seg[:, i, :, :].max())
+        # if bigger than 0.5, set to 1, else set to 0
+        lines += np.where(pred_seg[:, i, :, :] > 0.5, 1, 0)
+
+    # save first two channel as png file
+    for i in range(3):
+        tmp = np.where(pred_seg[:, i, :, :] > 0.5, 1, 0)
+        tmp = tmp.astype('uint8') * 255
+        # (1, 352, 352) => (352, 352)
+        tmp = tmp.squeeze(0)
+        tmp = Image.fromarray(tmp)
+        tmp.save('pred_seg_%d.png'%i)
+
+    # sum to one channel
+    pred_seg = lines.sum(axis=0)
+    pred_seg = pred_seg.astype('uint8') * 25
+    pred_seg = Image.fromarray(pred_seg)
+    pred_seg.save('pred_seg.png')
+
+    total_bboxes, output_bboxes  = [], []
+
+    N, C, H, W = pred_det.shape
+    bboxes = torch.zeros((N, H, W, 6))
+    pred = pred_det.permute(0, 2, 3, 1)
+    pobj = pred[:, :, :, 0].unsqueeze(dim=-1)
+    preg = pred[:, :, :, 1:5]
+    pcls = pred[:, :, :, 5:]
     bboxes[..., 4] = (pobj.squeeze(-1) ** 0.6) * (pcls.max(dim=-1)[0] ** 0.4)
     bboxes[..., 5] = pcls.argmax(dim=-1)
 
-    # 检测框的坐标
     gy, gx = torch.meshgrid([torch.arange(H), torch.arange(W)])
     bw, bh = preg[..., 2].sigmoid(), preg[..., 3].sigmoid() 
     bcx = (preg[..., 0].tanh() + gx.to(device)) / W
@@ -92,11 +114,9 @@ def handle_preds(preds, device, conf_thresh=0.25, nms_thresh=0.45):
         
     batch_bboxes = torch.cat(total_bboxes, 1)
 
-    # 对检测框进行NMS处理
     for p in batch_bboxes:
         output, temp = [], []
         b, s, c = [], [], []
-        # 阈值筛选
         t = p[:, 4] > conf_thresh
         pb = p[t]
         for bbox in pb:
@@ -108,7 +128,7 @@ def handle_preds(preds, device, conf_thresh=0.25, nms_thresh=0.45):
             c.append([category])
             b.append([x1, y1, x2, y2])
             temp.append([x1, y1, x2, y2, obj_score, category])
-        # Torchvision NMS
+
         if len(b) > 0:
             b = torch.Tensor(b).to(device)
             c = torch.Tensor(c).squeeze(1).to(device)
@@ -117,4 +137,5 @@ def handle_preds(preds, device, conf_thresh=0.25, nms_thresh=0.45):
             for i in keep:
                 output.append(temp[i])
         output_bboxes.append(torch.Tensor(output))
+
     return output_bboxes

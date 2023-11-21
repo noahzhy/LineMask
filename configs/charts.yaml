@@ -1,16 +1,16 @@
 DATASET:
-  TRAIN: "E:/projects/multi-chart/configs/train.txt"
-  VAL: "E:/projects/multi-chart/configs/val.txt"
+  TRAIN: "data/train.txt"
+  VAL: "data/train.txt"
   NAMES: "configs/charts.names"
 MODEL:
-  NC: 1
-  INPUT_WIDTH: 352
-  INPUT_HEIGHT: 352
+  NC: 3
+  INPUT_WIDTH: 640
+  INPUT_HEIGHT: 640
 TRAIN:
-  LR: 0.0005
+  LR: 0.005
   THRESH: 0.25
   WARMUP: true
-  BATCH_SIZE: 16
+  BATCH_SIZE: 1
   END_EPOCH: 300
   MILESTIONES:
     - 100

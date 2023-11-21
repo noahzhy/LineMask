@@ -1,65 +1,72 @@
 import torch
 import torch.nn as nn
 
-from shufflenetv2 import ShuffleNetV2
-from custom_layers import *
+from .shufflenetv2 import ShuffleNetV2
+from .custom_layers import *
 
 
 class Detector(nn.Module):
-    def __init__(self, category_num, line_max=10, load_param=False):
+    def __init__(self, category_num=3, max_lines=10, load_param=False):
         super(Detector, self).__init__()
 
         self.stage_repeats = [4, 8, 4]
         self.stage_out_channels = [-1, 24, 48, 96, 192]
-        self.backbone = ShuffleNetV2(self.stage_repeats, self.stage_out_channels, load_param)
+        self.backbone = ShuffleNetV2(
+            self.stage_repeats, self.stage_out_channels, load_param)
 
-        self.upsample = nn.Upsample(scale_factor=2, mode='nearest')
-        self.avg_pool = nn.AvgPool2d(kernel_size=3, stride=2, padding=1)
-        self.SPP = SPP(sum(self.stage_out_channels[-3:]), self.stage_out_channels[-2])
+        self.upsample3to2 = upsample(
+            self.stage_out_channels[-1], self.stage_out_channels[-2])
+        self.upsample2to1 = upsample(
+            self.stage_out_channels[-2], self.stage_out_channels[-3])
+        self.conv1x1_p2 = nn.Conv2d(
+            self.stage_out_channels[-2], self.stage_out_channels[-2], kernel_size=1, stride=1, padding=0)
+        self.conv1x1_p1 = nn.Conv2d(
+            self.stage_out_channels[-3], self.stage_out_channels[-3], kernel_size=1, stride=1, padding=0)
+        self.last_conv = dw_conv3(
+            self.stage_out_channels[-3], self.stage_out_channels[-3])
 
-        # 1x1 conv2d, unit_out is line_max
-        self.conv_1x1 = Conv1x1(self.stage_out_channels[-2], line_max)
-        # same output channel as conv_1x1
-        self.skip_conv = Conv1x1(self.stage_out_channels[-3], line_max)
+        self.detect_head = DetectHead(
+            self.stage_out_channels[-3], category_num)
+        self.seg = nn.Sequential(
+            # 8x upsample
+            nn.UpsamplingBilinear2d(scale_factor=8),
+            nn.Conv2d(
+                self.stage_out_channels[-3], max_lines, kernel_size=1, stride=1, padding=0),
+            nn.Sigmoid()
+        )
 
-        self.detect_head = DetectHead(self.stage_out_channels[-2], category_num)
-        # attn
-        self.attn = Attention(self.stage_out_channels[-2], self.stage_out_channels[-2])
+        # 1x1 conv
+        self.conv1x1 = nn.Sequential(
+            nn.Conv2d(3, max_lines, kernel_size=1, stride=1, padding=0),
+            nn.ReLU(inplace=True)
+        )
 
-        # 8x up
-        self.up_8x = nn.Upsample(scale_factor=8, mode='nearest')
-
-    def forward(self, x):
-        P1, P2, P3 = self.backbone(x)
-        P = torch.cat((self.avg_pool(P1), P2, self.upsample(P3)), dim=1)
-        y = self.SPP(P)
-        det = self.detect_head(y)
-        # det shape: [batch_size, 6, 22, 22]
-        attn = self.attn(y)
-        conv1x1 = self.conv_1x1(attn)
-        conv1x1 = conv1x1 + self.skip_conv(P1)
-        seg = self.up_8x(conv1x1)
-        # seg shape: [batch_size, line_max, 352, 352]
+    def forward(self, inputs):
+        P1, P2, P3 = self.backbone(inputs)
+        skip = self.conv1x1(inputs)
+        x = P3
+        x = self.upsample3to2(x) + self.conv1x1_p2(P2)
+        x = self.upsample2to1(x) + self.conv1x1_p1(P1)
+        x = self.last_conv(x)
+        det = self.detect_head(x)
+        seg = self.seg(x) + skip
         return det, seg
 
 
 if __name__ == "__main__":
-    model = Detector(10, 10, False)
+    model = Detector()
     test_data = torch.rand(1, 3, 352, 352)
-    # torch.onnx.export(model,                    # model being run
-    #                  test_data,                 # model input (or a tuple for multiple inputs)
-    #                  "./test.onnx",             # where to save the model (can be a file or file-like object)
-    #                  export_params=True,        # store the trained parameter weights inside the model file
-    #                  opset_version=11,          # the ONNX version to export the model to
-    #                  do_constant_folding=True)  # whether to execute constant folding for optimization
-    y = model(test_data)
-    for idx, i in enumerate(y):
-        print(idx, i.shape)
-
-    # calculate the flops
-    from thop import profile
-    from thop import clever_format
-
-    flops, params = profile(model, inputs=(test_data,))
-    flops, params = clever_format([flops, params], "%.2f")
-    print(flops, params)
+    torch.onnx.export(model,                    # model being run
+                      # model input (or a tuple for multiple inputs)
+                      test_data,
+                      # where to save the model (can be a file or file-like object)
+                      "./test.onnx",
+                      export_params=True,        # store the trained parameter weights inside the model file
+                      opset_version=11,          # the ONNX version to export the model to
+                      do_constant_folding=True)  # whether to execute constant folding for optimization
+    model.eval()
+    # inference
+    torch_out = model(test_data)
+    for h in torch_out:
+        # check min and max value
+        print(h.min(), h.max())
