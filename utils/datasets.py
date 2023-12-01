@@ -5,7 +5,32 @@ import cv2
 import torch
 import numpy as np
 from PIL import Image, ImageDraw
+import matplotlib
+matplotlib.use('Qt5Agg')
 import matplotlib.pyplot as plt
+
+from utils.toStyle import add_noise, texture
+
+
+
+def old_style(img, bbox, mask):
+    img = add_noise(texture(img, sigma=4, turbulence=4), sigma=5)
+    height, width, _ = img.shape
+    output = []
+    for box in boxes:
+        index, category = box[0], box[1]
+        bx, by = box[2] * width, box[3] * height
+        bw, bh = box[4] * width, box[5] * height
+
+        bx = bx/width
+        by = by/height
+        bw = bw/width
+        bh = bh/height
+
+        output.append([index, category, bx, by, bw, bh])
+
+    output = np.array(output, dtype=float)
+    return img, output, mask
 
 
 def do_nothing(image, boxes, mask):
@@ -91,7 +116,7 @@ def collate_fn(batch):
 
 
 # function to gen line mask via given [[x1, y1, x2, y2, ...], [x1, y1, x2, y2, ...], ...]
-def gen_line_mask(lines, T=10, img_width=352, img_height=352, line_width=5):
+def gen_line_mask(lines, T=10, img_width=512, img_height=512, line_width=5):
     masks = np.zeros((img_height, img_width, T), dtype=np.int64)
     for idx, line in enumerate(lines):
         x = line[:][0::2] * img_width
@@ -105,7 +130,7 @@ def gen_line_mask(lines, T=10, img_width=352, img_height=352, line_width=5):
 
 
 class TensorDataset():
-    def __init__(self, path, img_width=352, img_height=352, line_max=10, aug=False):
+    def __init__(self, path, img_width=512, img_height=512, line_max=10, aug=False):
         assert os.path.exists(path), "%s file is not exist" % path
 
         self.aug = aug
@@ -149,6 +174,7 @@ class TensorDataset():
         else:
             raise Exception("%s is not exist" % label_path)
 
+
         if self.aug:
             if random.randint(1, 10) % 2 == 0:
                 img, label, mask = random_narrow(img, label, mask)
@@ -159,6 +185,7 @@ class TensorDataset():
 
         # print(img.shape, label.shape, mask.shape, img_path)
         img = cv2.resize(img, (self.img_width, self.img_height), interpolation=cv2.INTER_LINEAR)
+        img = add_noise(texture(img, sigma=2, turbulence=4), sigma=3) / 255.0
         img = img.transpose(2,0,1)
 
         mask = cv2.resize(mask, (self.img_width, self.img_height), interpolation=cv2.INTER_NEAREST)
@@ -171,7 +198,7 @@ class TensorDataset():
 
 
 if __name__ == "__main__":
-    data = TensorDataset("data/train.txt", aug=False)
+    data = TensorDataset("configs/train_line.txt", aug=True)
     img, label, mask = data.__getitem__(0)
     print(img.shape, label.shape, mask.shape)
 

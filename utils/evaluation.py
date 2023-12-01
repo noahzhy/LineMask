@@ -61,6 +61,9 @@ class CocoDetectionEvaluator():
 
     # calculate miou and acc
     def cal_miou_acc(self, pred, mask):
+        # to same device
+        pred = pred.to(self.device)
+        mask = mask.to(self.device)
         pred = pred.argmax(dim=1)
         mask = mask.argmax(dim=1)
         miou = []

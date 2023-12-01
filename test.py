@@ -15,8 +15,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--yaml', type=str, default="configs/charts.yaml", help='.yaml config')
     parser.add_argument('--weight', type=str, default=None, help='.weight config')
-    parser.add_argument('--img', type=str, default='data/000ab93694f24a3c94ebe1133cb8b3ec.png', help='The path of test image')
-    parser.add_argument('--thresh', type=float, default=0.80, help='The path of test image')
+    parser.add_argument('--img', type=str, default='data/002.png', help='The path of test image')
+    parser.add_argument('--thresh', type=float, default=0.90, help='The path of test image')
     parser.add_argument('--onnx', action="store_true", default=False, help='Export onnx file')
     parser.add_argument('--torchscript', action="store_true", default=False, help='Export torchscript file')
     parser.add_argument('--cpu', action="store_true", default=False, help='Run on cpu')
@@ -27,9 +27,9 @@ if __name__ == '__main__':
 
     if opt.weight is None:
         # find latest weight in checkpoint dir
-        weight_list = os.listdir("checkpoint")
-        weight_list.sort(key=lambda fn: os.path.getmtime(os.path.join("checkpoint", fn)))
-        opt.weight = os.path.join("checkpoint", weight_list[-1])
+        weight_list = os.listdir("checkpoints")
+        weight_list.sort(key=lambda fn: os.path.getmtime(os.path.join("checkpoints", fn)))
+        opt.weight = os.path.join("checkpoints", weight_list[-1])
         print("use latest weight:%s"%opt.weight)
 
     # 选择推理后端

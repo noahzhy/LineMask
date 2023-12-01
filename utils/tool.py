@@ -14,6 +14,8 @@ class LoadYaml:
         self.train_txt = data["DATASET"]["TRAIN"]
         self.names = data["DATASET"]["NAMES"]
 
+        self.warmup = data["TRAIN"]["WARMUP"]
+
         self.learn_rate = data["TRAIN"]["LR"]
         self.batch_size = data["TRAIN"]["BATCH_SIZE"]
         self.milestones = data["TRAIN"]["MILESTIONES"]
@@ -62,30 +64,30 @@ class EMA():
 
 def handle_preds(preds, device, conf_thresh=0.25, nms_thresh=0.45):
     pred_det, pred_seg = preds
-    # get one channel
-    lines = np.zeros_like(pred_seg[:, 0, :, :].detach().cpu().numpy())
-    # min and max
-    # sum to one channel
-    for i in range(pred_seg.shape[1]):
-        # # check min and max value
-        # print(pred_seg[:, i, :, :].min(), pred_seg[:, i, :, :].max())
-        # if bigger than 0.5, set to 1, else set to 0
-        lines += np.where(pred_seg[:, i, :, :] > 0.5, 1, 0)
+    # # get one channel
+    # lines = np.zeros_like(pred_seg[:, 0, :, :].detach().cpu().numpy())
+    # # min and max
+    # # sum to one channel
+    # for i in range(pred_seg.shape[1]):
+    #     # # check min and max value
+    #     # print(pred_seg[:, i, :, :].min(), pred_seg[:, i, :, :].max())
+    #     # if bigger than 0.5, set to 1, else set to 0
+    #     lines += np.where(pred_seg[:, i, :, :].cpu() > 0.5, 1, 0)
 
-    # save first two channel as png file
-    for i in range(3):
-        tmp = np.where(pred_seg[:, i, :, :] > 0.5, 1, 0)
-        tmp = tmp.astype('uint8') * 255
-        # (1, 352, 352) => (352, 352)
-        tmp = tmp.squeeze(0)
-        tmp = Image.fromarray(tmp)
-        tmp.save('pred_seg_%d.png'%i)
+    # # save first two channel as png file
+    # for i in range(3):
+    #     tmp = np.where(pred_seg[:, i, :, :].cpu() > 0.5, 1, 0)
+    #     tmp = tmp.astype('uint8') * 255
+    #     # (1, 352, 352) => (352, 352)
+    #     tmp = tmp.squeeze(0)
+    #     tmp = Image.fromarray(tmp)
+    #     tmp.save('pred_seg_%d.png'%i)
 
-    # sum to one channel
-    pred_seg = lines.sum(axis=0)
-    pred_seg = pred_seg.astype('uint8') * 25
-    pred_seg = Image.fromarray(pred_seg)
-    pred_seg.save('pred_seg.png')
+    # # sum to one channel
+    # pred_seg = lines.sum(axis=0)
+    # pred_seg = pred_seg.astype('uint8') * 25
+    # pred_seg = Image.fromarray(pred_seg)
+    # pred_seg.save('pred_seg.png')
 
     total_bboxes, output_bboxes  = [], []
 
