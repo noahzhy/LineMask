@@ -9,50 +9,21 @@ import matplotlib
 matplotlib.use('Qt5Agg')
 import matplotlib.pyplot as plt
 
-from utils.toStyle import add_noise, texture
+from toStyle import add_noise, texture
 
 
 
-def old_style(img, bbox, mask):
+def old_style(img, mask):
     img = add_noise(texture(img, sigma=4, turbulence=4), sigma=5)
-    height, width, _ = img.shape
-    output = []
-    for box in boxes:
-        index, category = box[0], box[1]
-        bx, by = box[2] * width, box[3] * height
-        bw, bh = box[4] * width, box[5] * height
-
-        bx = bx/width
-        by = by/height
-        bw = bw/width
-        bh = bh/height
-
-        output.append([index, category, bx, by, bw, bh])
-
-    output = np.array(output, dtype=float)
-    return img, output, mask
+    return img, mask
 
 
-def do_nothing(image, boxes, mask):
+def do_nothing(image, mask):
     height, width, _ = image.shape
-    output = []
-    for box in boxes:
-        index, category = box[0], box[1]
-        bx, by = box[2] * width, box[3] * height
-        bw, bh = box[4] * width, box[5] * height
-
-        bx = bx/width
-        by = by/height
-        bw = bw/width
-        bh = bh/height
-
-        output.append([index, category, bx, by, bw, bh])
-
-    output = np.array(output, dtype=float)
-    return image, output, mask
+    return image, mask
 
 
-def random_crop(image, boxes, mask):
+def random_crop(image, mask):
     height, width, _ = image.shape
     # random crop imgage
     cw, ch = random.randint(int(width * 0.75), width), random.randint(int(height * 0.75), height)
@@ -62,24 +33,11 @@ def random_crop(image, boxes, mask):
     roi_h, roi_w, _ = roi.shape
 
     roi_mask = mask[cy:cy + ch, cx:cx + cw]
-    
-    output = []
-    for box in boxes:
-        index, category = box[0], box[1]
-        bx, by = box[2] * width, box[3] * height
-        bw, bh = box[4] * width, box[5] * height
 
-        bx, by = (bx - cx)/roi_w, (by - cy)/roi_h
-        bw, bh = bw/roi_w, bh/roi_h
-
-        output.append([index, category, bx, by, bw, bh])
-
-    output = np.array(output, dtype=float)
-
-    return roi, output, roi_mask
+    return roi, roi_mask
 
 
-def random_narrow(image, boxes, mask):
+def random_narrow(image, mask):
     height, width, _ = image.shape
     # random narrow
     cw, ch = random.randint(width, int(width * 1.25)), random.randint(height, int(height * 1.25))
@@ -91,28 +49,15 @@ def random_narrow(image, boxes, mask):
     bg_mask = np.zeros((ch, cw, mask.shape[2]), dtype=np.int64)
     bg_mask[cy:cy + height, cx:cx + width] = mask
 
-    output = []
-    for box in boxes:
-        index, category = box[0], box[1]
-        bx, by = box[2] * width, box[3] * height
-        bw, bh = box[4] * width, box[5] * height
-
-        bx, by = (bx + cx)/cw, (by + cy)/ch
-        bw, bh = bw/cw, bh/ch
-
-        output.append([index, category, bx, by, bw, bh])
-
-    output = np.array(output, dtype=float)
-
-    return background, output, bg_mask
+    return background, bg_mask
 
 
 def collate_fn(batch):
-    img, label, mask = zip(*batch)
+    img, mask = zip(*batch)
     for i, l in enumerate(label):
         if l.shape[0] > 0:
             l[:, 0] = i
-    return torch.stack(img), torch.cat(label, 0), torch.stack(mask)
+    return torch.stack(img), torch.stack(mask)
 
 
 # function to gen line mask via given [[x1, y1, x2, y2, ...], [x1, y1, x2, y2, ...], ...]
@@ -180,8 +125,6 @@ class TensorDataset():
                 img, label, mask = random_narrow(img, label, mask)
             else:
                 img, label, mask = random_crop(img, label, mask)
-        else:
-            img, label, mask = do_nothing(img, label, mask)
 
         # print(img.shape, label.shape, mask.shape, img_path)
         img = cv2.resize(img, (self.img_width, self.img_height), interpolation=cv2.INTER_LINEAR)
@@ -191,7 +134,7 @@ class TensorDataset():
         mask = cv2.resize(mask, (self.img_width, self.img_height), interpolation=cv2.INTER_NEAREST)
         mask = mask.transpose(2,0,1)
 
-        return torch.from_numpy(img), torch.from_numpy(label), torch.from_numpy(mask//255).long()
+        return torch.from_numpy(img), torch.from_numpy(mask//255).long()
 
     def __len__(self):
         return len(self.data_list)
