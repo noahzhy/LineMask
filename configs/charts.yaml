@@ -3,7 +3,7 @@ DATASET:
   VAL: "configs/val_line.txt"
   NAMES: "configs/charts.names"
 MODEL:
-  NC: 3
+  NC: 10
   INPUT_WIDTH: 512
   INPUT_HEIGHT: 512
 TRAIN:

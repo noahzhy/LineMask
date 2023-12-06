@@ -68,7 +68,7 @@ def texture(image, sigma=BG_SIGMA, turbulence=2):
 
 if __name__ == '__main__':
     # get all svg files
-    svg_files = glob.glob('E:/dataset/charts/synth_charts/line/*.png')
+    svg_files = glob.glob('before.png')
     # random select one
     svg_file = random.choice(svg_files)
     # read png file
@@ -78,7 +78,7 @@ if __name__ == '__main__':
     # save as before.png
     cv2.imwrite('before.png', img)
     # add noise and texture
-    img = add_noise(texture(img, sigma=2, turbulence=4), sigma=3)
+    img = add_noise(texture(img, sigma=3, turbulence=4), sigma=3)
     # save
     cv2.imwrite('debug.png', img)
 

@@ -3,18 +3,18 @@ import random
 
 import cv2
 import torch
+import numba as nb
 import numpy as np
 from PIL import Image, ImageDraw
 import matplotlib
 matplotlib.use('Qt5Agg')
 import matplotlib.pyplot as plt
 
-from toStyle import add_noise, texture
-
+from utils.toStyle import add_noise, texture
 
 
 def old_style(img, mask):
-    img = add_noise(texture(img, sigma=4, turbulence=4), sigma=5)
+    img = add_noise(texture(img, sigma=3, turbulence=4), sigma=3)
     return img, mask
 
 
@@ -37,6 +37,7 @@ def random_crop(image, mask):
     return roi, roi_mask
 
 
+@nb.jit(nopython=True)
 def random_narrow(image, mask):
     height, width, _ = image.shape
     # random narrow

@@ -11,7 +11,6 @@ from module.detector import Detector
 
 
 if __name__ == '__main__':
-    # 指定训练配置文件
     parser = argparse.ArgumentParser()
     parser.add_argument('--yaml', type=str, default="configs/charts.yaml", help='.yaml config')
     parser.add_argument('--weight', type=str, default=None, help='.weight config')
