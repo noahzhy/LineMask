@@ -10,7 +10,7 @@ __all__ = ['MobileNetV3Seg']
 
 
 class MobileNetV3Seg(BaseModel):
-    def __init__(self, nclass, aux=False, backbone='mobilenetv3_small', **kwargs):
+    def __init__(self, nclass, aux=False, backbone='mobilenetv3_large', **kwargs):
         super(MobileNetV3Seg, self).__init__(nclass, aux, backbone, **kwargs)
         mode = backbone.split('_')[-1]
         self.head = _Head(nclass, mode, **kwargs)
@@ -26,10 +26,11 @@ class MobileNetV3Seg(BaseModel):
         x = F.interpolate(x, size, mode='bilinear', align_corners=True)
         outputs.append(x)
 
-        if self.aux:
-            auxout = self.auxlayer(c2)
-            auxout = F.interpolate(auxout, size, mode='bilinear', align_corners=True)
-            outputs.append(auxout)
+        # if self.aux:
+        #     auxout = self.auxlayer(c2)
+        #     auxout = F.interpolate(auxout, size, mode='bilinear', align_corners=True)
+        #     outputs.append(auxout)
+
         return tuple(outputs)
 
 
@@ -37,7 +38,7 @@ class _Head(nn.Module):
     def __init__(self, nclass, mode='small', norm_layer=nn.BatchNorm2d, **kwargs):
         super(_Head, self).__init__()
         in_channels = 960 if mode == 'large' else 576
-        self.lr_aspp = _LRASPP(in_channels, norm_layer, **kwargs)
+        self.lr_aspp = LRASPP(in_channels, norm_layer, **kwargs)
         self.project = nn.Conv2d(128, nclass, 1)
 
     def forward(self, x):
@@ -45,11 +46,11 @@ class _Head(nn.Module):
         return self.project(x)
 
 
-class _LRASPP(nn.Module):
+class LRASPP(nn.Module):
     """Lite R-ASPP"""
 
     def __init__(self, in_channels, norm_layer, **kwargs):
-        super(_LRASPP, self).__init__()
+        super(LRASPP, self).__init__()
         out_channels = 128
         self.b0 = nn.Sequential(
             nn.Conv2d(in_channels, out_channels, 1, bias=False),
@@ -74,10 +75,10 @@ class _LRASPP(nn.Module):
 if __name__ == '__main__':
     NUM_CLASS = 10
     crop = 768
-    model = MobileNetV3Seg(NUM_CLASS, backbone='mobilenetv3_small')
+    model = MobileNetV3Seg(NUM_CLASS, backbone='mobilenetv3_large')
     x = torch.rand(1, 3, crop, crop)
     y = model(x)
     print(y[0].size())
     # save as onnx
     model.eval()
-    torch.onnx.export(model, x, "mobilenetv3_small.onnx")
+    torch.onnx.export(model, x, "mobilenetv3_large.onnx")

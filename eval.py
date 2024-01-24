@@ -39,7 +39,7 @@ if __name__ == '__main__':
     evaluation = CocoDetectionEvaluator(cfg.names, device)
 
     # 数据集加载
-    val_dataset = TensorDataset(cfg.val_txt, cfg.input_width, cfg.input_height, False)
+    val_dataset = ChartDataset(cfg.val_txt, cfg.input_width, cfg.input_height, False)
 
     #验证集
     val_dataloader = torch.utils.data.DataLoader(val_dataset,

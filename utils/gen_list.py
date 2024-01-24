@@ -29,7 +29,7 @@ def gen_list(txt_dir, tar_dir="data"):
 # main
 if __name__ == "__main__":
     # txt dir
-    txt_dir = "data"
+    txt_dir = "/home/noah/datasets/old_data"
     # tar dir
     tar_dir = "configs"
     # gen list

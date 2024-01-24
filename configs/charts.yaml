@@ -1,16 +1,16 @@
 DATASET:
-  TRAIN: "configs/train_line.txt"
-  VAL: "configs/val_line.txt"
+  TRAIN: "configs/train.txt"
+  VAL: "configs/val.txt"
   NAMES: "configs/charts.names"
 MODEL:
   NC: 10
   INPUT_WIDTH: 512
   INPUT_HEIGHT: 512
 TRAIN:
-  LR: 0.0005
+  LR: 0.0001
   THRESH: 0.25
   WARMUP: False
-  BATCH_SIZE: 64
+  BATCH_SIZE: 8
   END_EPOCH: 300
   MILESTIONES:
     - 100
